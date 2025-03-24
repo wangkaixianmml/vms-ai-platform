@@ -22,6 +22,7 @@ const AppSidebar: React.FC = () => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return ['1'];
     if (path.includes('/vulnerabilities')) return ['2'];
+    if (path.includes('/assets')) return ['3'];
     return ['1'];
   };
 
@@ -41,7 +42,8 @@ const AppSidebar: React.FC = () => {
     {
       key: '3',
       icon: <SecurityScanOutlined />,
-      label: '资产管理'
+      label: '资产管理',
+      onClick: () => navigate('/assets')
     },
     {
       key: '4',

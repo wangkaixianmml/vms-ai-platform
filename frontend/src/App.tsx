@@ -6,6 +6,8 @@ import AppSidebar from './components/layout/AppSidebar';
 import Dashboard from './pages/Dashboard';
 import VulnerabilityList from './pages/vulnerability/VulnerabilityList';
 import VulnerabilityDetail from './pages/vulnerability/VulnerabilityDetail';
+import AssetList from './pages/asset/AssetList';
+import AssetDetail from './pages/asset/AssetDetail';
 import { AIChatProvider } from './context/AIChatContext';
 
 const { Content } = Layout;
@@ -23,6 +25,8 @@ const App: React.FC = () => {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/vulnerabilities" element={<VulnerabilityList />} />
               <Route path="/vulnerabilities/:id" element={<VulnerabilityDetail />} />
+              <Route path="/assets" element={<AssetList />} />
+              <Route path="/assets/:id" element={<AssetDetail />} />
             </Routes>
           </Content>
         </Layout>
