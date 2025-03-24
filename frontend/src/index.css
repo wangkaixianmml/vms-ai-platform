@@ -1,0 +1,237 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.logo {
+  height: 32px;
+  margin: 16px;
+  background: rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+}
+
+.site-layout .site-layout-background {
+  background: #fff;
+}
+
+.ant-layout {
+  min-height: 100vh;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.ai-chat-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 350px;
+  max-height: 500px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background-color: #1677ff;
+  color: white;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.chat-body {
+  padding: 16px;
+  overflow-y: auto;
+  flex-grow: 1;
+  max-height: 350px;
+}
+
+.chat-footer {
+  padding: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.message {
+  margin-bottom: 12px;
+  max-width: 80%;
+}
+
+.message.user {
+  margin-left: auto;
+  background-color: #1677ff;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 12px 12px 0 12px;
+}
+
+.message.ai {
+  margin-right: auto;
+  background-color: #f5f5f5;
+  padding: 8px 12px;
+  border-radius: 12px 12px 12px 0;
+}
+
+.message-content {
+  word-break: break-word;
+}
+
+/* AI聊天窗口样式 */
+.ai-chat-window {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 400px;
+  max-height: 600px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ai-chat-header {
+  background-color: #1677ff;
+  color: white;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ai-chat-body {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.ai-chat-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+}
+
+.ai-message {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.ai-message-user {
+  flex-direction: row-reverse;
+}
+
+.ai-message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+}
+
+.ai-message-content {
+  max-width: 70%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  position: relative;
+}
+
+.ai-message-ai .ai-message-content {
+  background-color: #f2f3f5;
+  color: #333;
+}
+
+.ai-message-user .ai-message-content {
+  background-color: #1677ff;
+  color: white;
+}
+
+.ai-message-markdown p {
+  margin: 0 0 8px 0;
+}
+
+.ai-message-markdown ul, .ai-message-markdown ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.ai-message-markdown code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.ai-message-markdown pre {
+  overflow-x: auto;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 1em;
+  margin: 0.5em 0;
+}
+
+/* 打字机效果相关样式 */
+.typing-cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 1.2em;
+  background-color: #333;
+  margin-left: 2px;
+  animation: cursor-blink 1s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typewriter-container {
+  display: inline;
+}
+
+.typing-animation p:last-child::after {
+  content: '|';
+  animation: cursor-blink 1s step-end infinite;
+}
+
+/* 流式文本提示样式 */
+.stream-indicator {
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 4px;
+  animation: fade-pulse 2s infinite;
+}
+
+@keyframes fade-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
