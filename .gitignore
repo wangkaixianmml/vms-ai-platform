@@ -39,6 +39,16 @@ yarn-error.log
 .cache/
 .parcel-cache
 
+# 添加详细的缓存过滤规则
+**/.cache/**
+**/.cache/**/*.pack
+*.pack
+**/node_modules/.cache/
+**/node_modules/.cache/**/*.pack
+frontend/node_modules/.cache/
+frontend/node_modules/.cache/default-development/
+frontend/node_modules/.cache/**/*
+
 # 日志文件
 *.log
 logs/
