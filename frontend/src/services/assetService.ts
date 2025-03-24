@@ -1,4 +1,5 @@
 import api from './api';
+// @ts-ignore
 import { Asset, AssetCreate, AssetUpdate } from '../types/asset';
 
 /**

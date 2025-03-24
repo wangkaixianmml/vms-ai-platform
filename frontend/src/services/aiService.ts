@@ -19,6 +19,28 @@ export interface AutocompleteVulnerabilityResult {
 }
 
 /**
+ * 风险评估结果接口
+ */
+export interface RiskAssessmentResult {
+  vpr_score: number;
+  priority: string;
+  assessment_reasoning: string;
+  technical_risk_factors: string[];
+  business_risk_factors: string[];
+  remediation_priority: string;
+}
+
+/**
+ * 风险评估响应接口
+ */
+export interface RiskAssessmentResponse {
+  success: boolean;
+  result?: RiskAssessmentResult;
+  error?: string;
+  raw_response?: string;
+}
+
+/**
  * AI服务接口
  */
 const aiService = {
@@ -37,6 +59,26 @@ const aiService = {
       throw error;
     }
   },
+};
+
+/**
+ * 使用AI评估漏洞风险
+ * @param vulnerabilityData 漏洞数据
+ * @returns 评估结果
+ */
+export const assessVulnerabilityRisk = async (vulnerabilityData: any): Promise<RiskAssessmentResponse> => {
+  try {
+    console.log('发送漏洞风险评估请求:', vulnerabilityData);
+    const response = await api.post('/api/v1/ai/vulnerabilities/risk-assessment', vulnerabilityData);
+    console.log('获取到风险评估结果:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('风险评估请求失败:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '未知错误'
+    };
+  }
 };
 
 export default aiService; 

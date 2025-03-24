@@ -317,10 +317,11 @@ const AssetDetail: React.FC = () => {
           <Descriptions.Item label="所属业务系统">{asset.business_system || '未指定'}</Descriptions.Item>
           <Descriptions.Item label="漏洞统计">
             <Space>
+              {asset.vulnerabilities_summary['紧急'] > 0 && <Tag color="magenta">紧急: {asset.vulnerabilities_summary['紧急']}</Tag>}
               {asset.vulnerabilities_summary['高'] > 0 && <Tag color="red">高: {asset.vulnerabilities_summary['高']}</Tag>}
               {asset.vulnerabilities_summary['中'] > 0 && <Tag color="orange">中: {asset.vulnerabilities_summary['中']}</Tag>}
               {asset.vulnerabilities_summary['低'] > 0 && <Tag color="green">低: {asset.vulnerabilities_summary['低']}</Tag>}
-              {!(asset.vulnerabilities_summary['高'] > 0 || asset.vulnerabilities_summary['中'] > 0 || asset.vulnerabilities_summary['低'] > 0) && <Tag color="default">无</Tag>}
+              {!(asset.vulnerabilities_summary['紧急'] > 0 || asset.vulnerabilities_summary['高'] > 0 || asset.vulnerabilities_summary['中'] > 0 || asset.vulnerabilities_summary['低'] > 0) && <Tag color="default">无</Tag>}
             </Space>
           </Descriptions.Item>
           <Descriptions.Item label="发现时间" span={2}>

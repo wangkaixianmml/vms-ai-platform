@@ -346,7 +346,7 @@ class DifyService:
                             if not line_text:
                                 continue
                             
-                            logger.debug(f"收到流式数据行: {line_text}")
+                            # logger.debug(f"收到流式数据行: {line_text}")
                             
                             # 处理SSE格式
                             if line_text.startswith('data: '):

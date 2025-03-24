@@ -116,10 +116,11 @@ const AssetList: React.FC = () => {
   const renderVulnerabilityTags = (summary: Record<string, number>) => {
     return (
       <Space>
+        {summary['紧急'] > 0 && <Tag color="magenta">紧急: {summary['紧急']}</Tag>}
         {summary['高'] > 0 && <Tag color="red">高: {summary['高']}</Tag>}
         {summary['中'] > 0 && <Tag color="orange">中: {summary['中']}</Tag>}
         {summary['低'] > 0 && <Tag color="green">低: {summary['低']}</Tag>}
-        {!(summary['高'] > 0 || summary['中'] > 0 || summary['低'] > 0) && <Tag color="default">无</Tag>}
+        {!(summary['紧急'] > 0 || summary['高'] > 0 || summary['中'] > 0 || summary['低'] > 0) && <Tag color="default">无</Tag>}
       </Space>
     );
   };
