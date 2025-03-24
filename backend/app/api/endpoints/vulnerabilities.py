@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Query, Depends
+from typing import List, Optional, Dict, Any
 from app.models.vulnerability import Vulnerability, VulnerabilityCreate, VulnerabilityUpdate
 import datetime
 import logging
+import urllib.parse
+
+from app.api.endpoints.assets import find_asset_by_address, mock_assets, create_asset
+from app.models.asset import AssetCreate
 
 # 设置日志
 logger = logging.getLogger(__name__)
@@ -103,6 +107,73 @@ mock_vulnerabilities = [
     }
 ]
 
+# 更新资产的漏洞统计信息
+def update_asset_vulnerability_summary():
+    """更新所有资产的漏洞统计信息"""
+    # 初始化所有资产的漏洞统计
+    for asset in mock_assets:
+        asset["vulnerabilities_summary"] = {"高": 0, "中": 0, "低": 0}
+    
+    # 遍历所有漏洞，更新对应资产的统计
+    for vuln in mock_vulnerabilities:
+        for affected_asset in vuln.get("affected_assets", []):
+            asset_id = affected_asset.get("id")
+            risk_level = vuln.get("risk_level")
+            
+            # 查找对应资产并更新统计
+            for asset in mock_assets:
+                if asset["id"] == asset_id and risk_level in ["高", "中", "低"]:
+                    asset["vulnerabilities_summary"][risk_level] += 1
+
+# 自动查找或创建与漏洞URL关联的资产
+async def find_or_create_asset_for_vulnerability(vulnerability_url: str) -> Optional[Dict[str, Any]]:
+    """
+    根据漏洞URL查找或创建关联资产
+    """
+    if not vulnerability_url:
+        return None
+    
+    # 尝试查找现有资产
+    asset = await find_asset_by_address(vulnerability_url)
+    if asset:
+        logger.info(f"找到与URL {vulnerability_url} 匹配的资产: {asset['name']} (ID: {asset['id']})")
+        return asset
+    
+    # 如果未找到资产，自动创建一个新资产
+    try:
+        # 解析URL获取基本信息
+        parsed_url = urllib.parse.urlparse(vulnerability_url)
+        hostname = parsed_url.netloc
+        
+        # 如果不是URL，直接使用原始值
+        if not hostname:
+            hostname = vulnerability_url
+        
+        # 确定资产类型
+        asset_type = "Web应用"
+        if ":" in hostname:  # 如果包含端口号，可能是服务器
+            hostname, port = hostname.split(":", 1)
+            asset_type = "服务器"
+        
+        # 创建新资产
+        new_asset = AssetCreate(
+            name=f"自动发现: {hostname}",
+            address=vulnerability_url,
+            type=asset_type,
+            source="漏洞自动关联",
+            network_type="未知",
+            importance_level="中"
+        )
+        
+        # 调用创建资产API
+        created_asset = await create_asset(new_asset)
+        logger.info(f"自动创建资产成功: {created_asset['name']} (ID: {created_asset['id']})")
+        
+        return created_asset
+    except Exception as e:
+        logger.error(f"自动创建资产失败: {str(e)}")
+        return None
+
 @router.get("/", response_model=List[Vulnerability])
 async def get_vulnerabilities(
     risk_level: Optional[str] = Query(None, description="按风险等级筛选"),
@@ -118,7 +189,8 @@ async def get_vulnerabilities(
     first_found_from: Optional[str] = Query(None, description="首次发现时间范围起始"),
     first_found_to: Optional[str] = Query(None, description="首次发现时间范围结束"),
     latest_found_from: Optional[str] = Query(None, description="最近发现时间范围起始"),
-    latest_found_to: Optional[str] = Query(None, description="最近发现时间范围结束")
+    latest_found_to: Optional[str] = Query(None, description="最近发现时间范围结束"),
+    affected_asset_id: Optional[int] = Query(None, description="按关联资产ID过滤")
 ):
     """获取漏洞列表，支持筛选"""
     logger.info(f"获取漏洞列表请求，筛选条件：risk_level={risk_level}, status={status}, "
@@ -127,8 +199,14 @@ async def get_vulnerabilities(
                 f"min_cvss={min_cvss}, max_cvss={max_cvss}, "
                 f"min_vpr={min_vpr}, max_vpr={max_vpr}, "
                 f"first_found_from={first_found_from}, first_found_to={first_found_to}, "
-                f"latest_found_from={latest_found_from}, latest_found_to={latest_found_to}")
+                f"latest_found_from={latest_found_from}, latest_found_to={latest_found_to}, "
+                f"affected_asset_id={affected_asset_id}")
     results = mock_vulnerabilities
+    
+    # 根据资产ID过滤
+    if affected_asset_id is not None:
+        logger.info(f"按关联资产ID筛选: {affected_asset_id}")
+        results = [v for v in results if any(asset.get('id') == affected_asset_id for asset in v.get('affected_assets', []))]
     
     if risk_level:
         logger.info(f"按风险等级筛选: {risk_level}")
@@ -196,6 +274,9 @@ async def get_vulnerabilities(
         if to_date:
             results = [v for v in results if v.get("latest_found_date") and parse_datetime(v.get("latest_found_date")) <= to_date]
     
+    # 在返回结果前更新资产的漏洞统计
+    update_asset_vulnerability_summary()
+    
     logger.info(f"返回 {len(results)} 条漏洞记录")
     return results
 
@@ -217,13 +298,41 @@ async def create_vulnerability(vulnerability: VulnerabilityCreate):
     # 模拟创建新记录
     new_id = max([v["id"] for v in mock_vulnerabilities]) + 1
     
+    # 处理资产关联
+    affected_assets = []
+    
+    # 1. 处理通过ID直接关联的资产
+    if vulnerability.affected_assets:
+        for asset_id in vulnerability.affected_assets:
+            # 查找对应的资产
+            for asset in mock_assets:
+                if asset["id"] == asset_id:
+                    affected_assets.append({
+                        "id": asset["id"],
+                        "name": asset["name"],
+                        "ip": asset["address"] if asset["type"] == "服务器" else None,
+                        "type": asset["type"]
+                    })
+                    break
+    
+    # 2. 如果提供了漏洞URL，自动查找或创建关联资产
+    if vulnerability.vulnerability_url and not affected_assets:
+        asset = await find_or_create_asset_for_vulnerability(vulnerability.vulnerability_url)
+        if asset:
+            affected_assets.append({
+                "id": asset["id"],
+                "name": asset["name"],
+                "ip": asset["address"] if asset["type"] == "服务器" else None,
+                "type": asset["type"]
+            })
+    
     new_vulnerability = {
         "id": new_id,
         "name": vulnerability.name,
         "cve_id": vulnerability.cve_id,
         "risk_level": vulnerability.risk_level,
         "description": vulnerability.description,
-        "affected_assets": [],  # 简化版，不处理资产关联
+        "affected_assets": affected_assets,  # 使用关联的资产
         "discovery_date": datetime.datetime.now().isoformat(),
         "status": "待修复",
         "remediation_steps": vulnerability.remediation_steps,
@@ -250,19 +359,73 @@ async def create_vulnerability(vulnerability: VulnerabilityCreate):
     }
     
     mock_vulnerabilities.append(new_vulnerability)
-    logger.info(f"漏洞创建成功，ID: {new_id}")
+    
+    # 更新资产的漏洞统计信息
+    update_asset_vulnerability_summary()
+    
+    logger.info(f"漏洞创建成功，ID: {new_id}，关联资产数: {len(affected_assets)}")
     return new_vulnerability
 
 @router.put("/{vulnerability_id}", response_model=Vulnerability)
 async def update_vulnerability(vulnerability_id: int, vulnerability: VulnerabilityUpdate):
     """更新现有的漏洞记录"""
     logger.info(f"更新漏洞请求，ID: {vulnerability_id}, 数据: {vulnerability.dict(exclude_unset=True)}")
+    try:
+        logger.info(f"原始请求数据JSON: {vulnerability.json()}")
+    except Exception as e:
+        logger.error(f"打印JSON失败: {str(e)}")
+    
+    logger.info(f"当前漏洞数据（修改前）: {[v for v in mock_vulnerabilities if v['id'] == vulnerability_id]}")
+    
     for i, vuln in enumerate(mock_vulnerabilities):
         if vuln["id"] == vulnerability_id:
+            update_data = vulnerability.dict(exclude_unset=True)
+            
+            # 处理资产关联更新
+            if "affected_assets" in update_data and update_data["affected_assets"] is not None:
+                logger.info(f"处理资产关联更新，资产IDs: {update_data['affected_assets']}")
+                logger.info(f"资产IDs类型: {type(update_data['affected_assets'])}, 是否为列表: {isinstance(update_data['affected_assets'], list)}")
+                affected_assets = []
+                for asset_id in update_data["affected_assets"]:
+                    logger.info(f"查找资产ID: {asset_id}, 类型: {type(asset_id)}")
+                    # 查找对应的资产
+                    found_asset = False
+                    for asset in mock_assets:
+                        if asset["id"] == asset_id:
+                            found_asset = True
+                            logger.info(f"找到匹配资产: {asset['name']}")
+                            affected_assets.append({
+                                "id": asset["id"],
+                                "name": asset["name"],
+                                "ip": asset["address"] if asset["type"] == "服务器" else None,
+                                "type": asset["type"]
+                            })
+                            break
+                    if not found_asset:
+                        logger.warning(f"未找到资产ID: {asset_id}")
+                
+                logger.info(f"关联资产处理完成，找到 {len(affected_assets)} 个资产")
+                update_data["affected_assets"] = affected_assets
+            
+            # 如果修改了漏洞URL且没有明确设置关联资产，尝试自动关联
+            if "vulnerability_url" in update_data and not "affected_assets" in update_data:
+                asset = await find_or_create_asset_for_vulnerability(update_data["vulnerability_url"])
+                if asset:
+                    mock_vulnerabilities[i]["affected_assets"] = [{
+                        "id": asset["id"],
+                        "name": asset["name"],
+                        "ip": asset["address"] if asset["type"] == "服务器" else None,
+                        "type": asset["type"]
+                    }]
+            
             # 更新非空字段
-            for field, value in vulnerability.dict(exclude_unset=True).items():
+            for field, value in update_data.items():
                 if value is not None:
                     mock_vulnerabilities[i][field] = value
+            
+            # 更新资产的漏洞统计信息
+            update_asset_vulnerability_summary()
+            
             logger.info(f"漏洞更新成功，ID: {vulnerability_id}")
             return mock_vulnerabilities[i]
     
@@ -276,6 +439,10 @@ async def delete_vulnerability(vulnerability_id: int):
     for i, vuln in enumerate(mock_vulnerabilities):
         if vuln["id"] == vulnerability_id:
             del mock_vulnerabilities[i]
+            
+            # 更新资产的漏洞统计信息
+            update_asset_vulnerability_summary()
+            
             logger.info(f"漏洞删除成功，ID: {vulnerability_id}")
             return {"status": "success", "message": "漏洞已删除"}
     
