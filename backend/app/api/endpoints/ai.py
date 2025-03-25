@@ -1,12 +1,17 @@
 import logging
 from typing import Optional, Dict, Any
 import json
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 import traceback
 
 from app.services.dify_service import DifyService
-from app.core.prompt_templates import VULNERABILITY_AUTOCOMPLETE_PROMPT, VULNERABILITY_RISK_ASSESSMENT_PROMPT
+from app.core.prompt_templates import (
+    VULNERABILITY_AUTOCOMPLETE_PROMPT, 
+    VULNERABILITY_RISK_ASSESSMENT_PROMPT,
+    VULNERABILITY_ANALYSIS_PROMPT,
+    VULNERABILITY_REMEDIATION_PROMPT
+)
 from app.api.deps import get_dify_service
 from app.core.config import settings
 
@@ -206,4 +211,106 @@ async def assess_vulnerability_risk(
             }
     except Exception as e:
         logger.exception(f"执行漏洞风险评估时出错: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"评估过程中发生错误: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"评估过程中发生错误: {str(e)}")
+
+@router.post("/vulnerabilities/analysis")
+async def analyze_vulnerability(
+    vulnerability_data: Dict[str, Any],
+    dify_service: DifyService = Depends(get_dify_service)
+):
+    """
+    使用AI对漏洞进行深入分析
+    """
+    try:
+        logger.info(f"收到漏洞分析请求: {vulnerability_data.get('name', '未知漏洞')}")
+        
+        # 构建提示词
+        prompt = VULNERABILITY_ANALYSIS_PROMPT.format(
+            name=vulnerability_data.get("name", "未知漏洞"),
+            cve_id=vulnerability_data.get("cve_id", "无CVE编号"),
+            vulnerability_type=vulnerability_data.get("vulnerability_type", "未知"),
+            risk_level=vulnerability_data.get("risk_level", "未知"),
+            description=vulnerability_data.get("description", "无描述"),
+            impact_details=vulnerability_data.get("impact_details", "无危害信息"),
+            affected_components=vulnerability_data.get("affected_components", "无影响组件信息"),
+            discovery_date=vulnerability_data.get("discovery_date", "未知"),
+            status=vulnerability_data.get("status", "未知")
+        )
+        
+        logger.debug(f"构造的漏洞分析提示词: {prompt[:200]}...")
+        
+        # 发送到AI服务获取分析结果
+        response = await dify_service.send_first_message(
+            message=prompt
+        )
+        
+        # 处理响应
+        if response and response.get("answer"):
+            content = response.get("answer")
+            return {
+                "success": True,
+                "result": content,
+                "conversation_id": response.get("conversation_id")
+            }
+        else:
+            logger.error("AI分析服务未返回有效响应")
+            return {
+                "success": False,
+                "error": "未获得有效的分析结果"
+            }
+    except Exception as e:
+        logger.exception(f"执行漏洞分析时出错: {str(e)}")
+        return {
+            "success": False,
+            "error": f"分析过程中发生错误: {str(e)}"
+        }
+
+@router.post("/vulnerabilities/remediation")
+async def get_vulnerability_remediation(
+    vulnerability_data: Dict[str, Any],
+    dify_service: DifyService = Depends(get_dify_service)
+):
+    """
+    使用AI获取漏洞的修复建议
+    """
+    try:
+        logger.info(f"收到漏洞修复建议请求: {vulnerability_data.get('name', '未知漏洞')}")
+        
+        # 构建提示词
+        prompt = VULNERABILITY_REMEDIATION_PROMPT.format(
+            name=vulnerability_data.get("name", "未知漏洞"),
+            cve_id=vulnerability_data.get("cve_id", "无CVE编号"),
+            vulnerability_type=vulnerability_data.get("vulnerability_type", "未知"),
+            risk_level=vulnerability_data.get("risk_level", "未知"),
+            description=vulnerability_data.get("description", "无描述"),
+            affected_components=vulnerability_data.get("affected_components", "无影响组件信息"),
+            status=vulnerability_data.get("status", "未知")
+        )
+        
+        logger.debug(f"构造的漏洞修复建议提示词: {prompt[:200]}...")
+        
+        # 发送到AI服务获取修复建议
+        response = await dify_service.send_first_message(
+            message=prompt
+        )
+        
+        # 处理响应
+        if response and response.get("answer"):
+            content = response.get("answer")
+            return {
+                "success": True,
+                "result": content,
+                "conversation_id": response.get("conversation_id")
+            }
+        else:
+            logger.error("AI修复建议服务未返回有效响应")
+            return {
+                "success": False,
+                "error": "未获得有效的修复建议"
+            }
+    except Exception as e:
+        logger.exception(f"获取漏洞修复建议时出错: {str(e)}")
+        return {
+            "success": False,
+            "error": f"获取修复建议过程中发生错误: {str(e)}"
+        } 

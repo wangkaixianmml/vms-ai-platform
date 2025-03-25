@@ -396,17 +396,17 @@ class DifyService:
             logger.debug(f"开始流式响应处理 - URL: {url}")
             logger.debug(f"请求负载: {payload}")
             
-            # 首先发送一个符合Dify规范的message事件，而不是start事件
-            logger.info("发送初始message事件，符合Dify规范")
+            # 首先发送一个简短的初始消息
+            logger.info("发送非常简短的初始message事件")
             yield {
                 "event": "message",
-                "answer": "正在准备响应...\n",
+                "answer": "",  # 发送空初始消息，前端会保留提示但不会显示重复内容
                 "conversation_id": payload.get("conversation_id"),
                 "user_id": user_id
             }
             
-            # 短暂延迟以确保前端能收到
-            await asyncio.sleep(0.3)
+            # 最短延迟，仅确保前端能收到初始消息
+            await asyncio.sleep(0.02)
             
             # 不再发送第二个初始内容块，简化提示
             
