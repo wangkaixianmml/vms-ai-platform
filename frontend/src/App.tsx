@@ -9,6 +9,7 @@ import VulnerabilityDetail from './pages/vulnerability/VulnerabilityDetail';
 import AssetList from './pages/asset/AssetList';
 import AssetDetail from './pages/asset/AssetDetail';
 import { AIChatProvider } from './context/AIChatContext';
+import AIChat from './components/ai/AIChat';
 
 const { Content } = Layout;
 
@@ -31,6 +32,7 @@ const App: React.FC = () => {
           </Content>
         </Layout>
       </Layout>
+      <AIChat />
     </AIChatProvider>
   );
 };

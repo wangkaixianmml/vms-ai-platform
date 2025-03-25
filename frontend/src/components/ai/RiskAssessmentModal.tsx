@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Button, Spin, Typography, Divider, Card, Tag, List, Result, Space, Progress } from 'antd';
 import { RobotOutlined, CheckCircleOutlined, WarningOutlined, LoadingOutlined } from '@ant-design/icons';
-import { assessVulnerabilityRisk, RiskAssessmentResult } from '../../services/aiService';
+import aiService, { RiskAssessmentResult } from '../../services/aiService';
 import vulnerabilityService from '../../services/vulnerabilityService';
 
 const { Title, Paragraph, Text } = Typography;
@@ -58,7 +58,7 @@ const RiskAssessmentModal: React.FC<RiskAssessmentModalProps> = ({
 
     try {
       // 准备完整的漏洞数据，包括关联资产
-      const assessmentResponse = await assessVulnerabilityRisk(vulnerability);
+      const assessmentResponse = await aiService.assessVulnerabilityRisk(vulnerability);
       
       clearInterval(progressInterval);
       

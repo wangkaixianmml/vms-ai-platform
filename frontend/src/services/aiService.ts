@@ -41,6 +41,26 @@ export interface RiskAssessmentResponse {
 }
 
 /**
+ * AI分析响应
+ */
+export interface VulnerabilityAnalysisResponse {
+  success: boolean;
+  result?: string;
+  error?: string;
+  conversation_id?: string;
+}
+
+/**
+ * 修复建议响应
+ */
+export interface RemediationResponse {
+  success: boolean;
+  result?: string;
+  error?: string;
+  conversation_id?: string;
+}
+
+/**
  * AI服务接口
  */
 const aiService = {
@@ -59,25 +79,65 @@ const aiService = {
       throw error;
     }
   },
-};
 
-/**
- * 使用AI评估漏洞风险
- * @param vulnerabilityData 漏洞数据
- * @returns 评估结果
- */
-export const assessVulnerabilityRisk = async (vulnerabilityData: any): Promise<RiskAssessmentResponse> => {
-  try {
-    console.log('发送漏洞风险评估请求:', vulnerabilityData);
-    const response = await api.post('/api/v1/ai/vulnerabilities/risk-assessment', vulnerabilityData);
-    console.log('获取到风险评估结果:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('风险评估请求失败:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : '未知错误'
-    };
+  /**
+   * 使用AI评估漏洞风险
+   * @param vulnerabilityData 漏洞数据
+   * @returns 评估结果
+   */
+  assessVulnerabilityRisk: async (vulnerabilityData: any): Promise<RiskAssessmentResponse> => {
+    try {
+      console.log('发送漏洞风险评估请求:', vulnerabilityData);
+      const response = await api.post('/api/v1/ai/vulnerabilities/risk-assessment', vulnerabilityData);
+      console.log('获取到风险评估结果:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('风险评估请求失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误'
+      };
+    }
+  },
+
+  /**
+   * 获取漏洞的AI分析
+   * @param vulnerabilityData 漏洞数据
+   * @returns 分析结果
+   */
+  analyzeVulnerability: async (vulnerabilityData: any): Promise<VulnerabilityAnalysisResponse> => {
+    try {
+      console.log('发送漏洞分析请求:', vulnerabilityData);
+      const response = await api.post('/api/v1/ai/vulnerabilities/analysis', vulnerabilityData);
+      console.log('获取到漏洞分析结果:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('漏洞分析请求失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误'
+      };
+    }
+  },
+
+  /**
+   * 获取漏洞的修复建议
+   * @param vulnerabilityData 漏洞数据
+   * @returns 修复建议
+   */
+  getVulnerabilityRemediation: async (vulnerabilityData: any): Promise<RemediationResponse> => {
+    try {
+      console.log('发送漏洞修复建议请求:', vulnerabilityData);
+      const response = await api.post('/api/v1/ai/vulnerabilities/remediation', vulnerabilityData);
+      console.log('获取到漏洞修复建议:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('获取修复建议失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误'
+      };
+    }
   }
 };
 
