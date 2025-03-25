@@ -36,8 +36,9 @@ const TypewriterEffect: React.FC<{ text: string, loading?: boolean }> = ({ text,
   // 当text更新时处理打字效果
   useEffect(() => {
     // 如果文本为空或是特殊提示信息，直接显示，不使用打字效果
-    if (!text || text === 'AI正在思考中...' || text === 'AI正在分析漏洞数据...' || 
-        text === '正在等待AI响应...' || text === 'AI正在处理您的问题...') {
+    if (!text || text === 'AI正在思考中...' || text === 'AI正在分析数据中...' || 
+        text.includes('正在分析漏洞') || text.includes('正在为漏洞') || 
+        text.includes('正在等待AI响应') || text.includes('AI正在处理')) {
       setDisplayedText(text);
       setIsTyping(false);
       clearTypingTimer();
@@ -143,7 +144,8 @@ const AIChat: React.FC = () => {
     if (hasInitialMessage && messages.length === 1 && !isLoading) {
       const initialMessage = messages[0];
       console.log('自动发送初始消息:', initialMessage.content);
-      handleSendInitialMessage(initialMessage.content, null);
+      // 已经不需要在这里自动处理初始消息，因为由AIChatTrigger组件直接处理
+      // handleSendInitialMessage(initialMessage.content, null);
     }
   }, [messages, isLoading, sendMessage]);
 
@@ -155,6 +157,11 @@ const AIChat: React.FC = () => {
   // 消息变化时滚动到底部
   useEffect(() => {
     scrollToBottom();
+    // 再次设置一个延迟滚动，确保在动态加载内容后也能滚动到底部
+    const timer = setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+    return () => clearTimeout(timer);
   }, [messages]);
   
   // 处理初始消息发送
@@ -266,12 +273,6 @@ const AIChat: React.FC = () => {
               </div>
             </div>
           ))
-        )}
-        {isLoading && (
-          <div className="text-center py-4">
-            <Spin tip="AI正在分析中..." />
-            <p className="text-gray-400 mt-2">请稍候，正在处理您的请求...</p>
-          </div>
         )}
         <div ref={messagesEndRef} />
       </div>

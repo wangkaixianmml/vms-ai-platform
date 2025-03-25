@@ -22,7 +22,7 @@ interface AIChatContextType {
   userId: string | null;
   isLoading: boolean;
   showChat: boolean;
-  addMessage: (content: string, isUser: boolean) => void;
+  addMessage: (message: Message | string, isUser?: boolean) => void;
   openChat: (initialMessage?: string, initialData?: any) => void;
   closeChat: () => void;
   clearMessages: () => void;
@@ -67,7 +67,7 @@ const processStreamResponse = async (response: Response, tempMessageId: string, 
             ...msg, 
             isStreaming: true,
             loading: false, // 关键点：设置为false以启用打字机效果
-            content: "正在等待AI响应..." // 设置初始等待消息
+            content: "正在等待AI响应...\n\n" // 设置初始等待消息
           } 
         : msg
     ));
@@ -178,10 +178,18 @@ const processStreamResponse = async (response: Response, tempMessageId: string, 
                   }
                   
                   const eventData = JSON.parse(data);
-                  console.log(`解析事件数据: 类型=${eventData.type}, 数据=`, eventData);
+                  console.log(`解析事件数据: 类型=${eventData.type || eventData.event || '未指定'}, 数据=`, eventData);
+                  
+                  // 记录详细的事件类型信息，帮助调试
+                  if (eventData.type || eventData.event) {
+                    console.log(`事件类型详情 - type: ${eventData.type || '未设置'}, event: ${eventData.event || '未设置'}`);
+                  } else {
+                    console.warn('事件没有明确的类型标识(type或event)');
+                    console.log('可用字段:', Object.keys(eventData).join(', '));
+                  }
                   
                   // 处理不同类型的事件
-                  if (eventData.type === "start") {
+                  if (eventData.type === "start" || eventData.event === "start") {
                     console.log('流式响应开始');
                     // 初始化开始时立即将loading设为false
                     setMessages(prev => prev.map(msg => 
@@ -190,7 +198,7 @@ const processStreamResponse = async (response: Response, tempMessageId: string, 
                             ...msg, 
                             loading: false,
                             isStreaming: true,
-                            content: "正在等待AI响应..." // 设置初始等待消息
+                            content: "正在等待AI响应...\n\n" // 设置初始等待消息
                           } 
                         : msg
                     ));
@@ -209,7 +217,7 @@ const processStreamResponse = async (response: Response, tempMessageId: string, 
                       ));
                     }
                   } 
-                  else if (eventData.type === "chunk") {
+                  else if (eventData.type === "chunk" || eventData.event === "chunk") {
                     // 兼容我们自己实现的chunk类型（用于测试和调试）
                     const content = eventData.content || "";
                     console.log(`收到chunk事件，内容: "${content}"`);
@@ -272,70 +280,170 @@ const processStreamResponse = async (response: Response, tempMessageId: string, 
                       }
                     }
                     
-                    // 如果没有提取到内容，记录可用字段
+                    // 如果没有提取到内容，记录可用字段，但不直接返回，继续处理
                     if (!content) {
                       console.log('无法从message事件中提取内容，可用字段:', Object.keys(eventData).join(', '));
                       console.log('完整事件数据:', JSON.stringify(eventData));
-                      
-                      // 特殊处理：即使没有content，也要处理message_end事件的元数据
-                      if (eventData.event === "message_end") {
-                        console.log('收到message_end事件，处理元数据');
-                        respConversationId = eventData.conversation_id || respConversationId;
-                        respUserId = eventData.user_id || respUserId;
-                        
-                        // 标记消息为完成状态
-                        if (hasReceivedChunk) {
-                          setMessages(prev => prev.map(msg => 
-                            msg.id === tempMessageId 
-                              ? { 
-                                  ...msg, 
-                                  isStreaming: false,
-                                  loading: false
-                                } 
-                              : msg
-                          ));
-                          hasReceivedEndEvent = true;
-                        }
-                      }
-                      continue; // 继续处理下一个事件，而不是return整个函数
                     }
                     
-                    // 对于所有message事件都执行累积内容的操作
-                    // 无论是哪种类型的message事件，都累积显示内容
-                    responseText += content;
+                    // 处理message事件内容
+                    console.log(`处理message事件内容: 长度=${content?.length || 0}, 事件类型=${eventData.event || eventData.type}`);
+                    
+                    // 处理message_end特殊事件
+                    if (eventData.event === "message_end" || eventData.type === "message_end") {
+                      console.log('收到message_end事件');
+                      
+                      // 从message_end事件提取元数据
+                      respConversationId = eventData.conversation_id || respConversationId;
+                      respUserId = eventData.user_id || respUserId;
+                      
+                      // 如果有完整内容，使用它
+                      if (content && content.trim()) {
+                        console.log(`使用message_end中的完整内容: ${content.length}字符`);
+                        responseText = content;
+                      } else {
+                        console.log('message_end没有提供完整内容，使用之前累积的内容');
+                      }
+                      
+                      // 标记为完成
+                      hasReceivedEndEvent = true;
+                      hasReceivedChunk = true;
+                      
+                      // 更新消息状态为已完成
+                      setMessages(prev => prev.map(msg => 
+                        msg.id === tempMessageId 
+                          ? { 
+                              ...msg, 
+                              content: responseText,
+                              isStreaming: false,
+                              loading: false
+                            } 
+                          : msg
+                      ));
+                      
+                      // 不需要进一步处理这个事件
+                      continue;
+                    }
+                    
+                    // 如果是错误事件，处理错误
+                    if (eventData.event === "error" || eventData.type === "error") {
+                      console.log('收到错误事件');
+                      const errorMsg = eventData.error || "未知错误";
+                      console.error('服务器错误:', errorMsg);
+                      
+                      // 如果已经有累积的内容，保留内容并添加错误提示
+                      if (responseText && responseText.length > 0) {
+                        responseText += "\n\n_注：响应过程中遇到错误：" + errorMsg + "_";
+                      } else {
+                        responseText = "错误: " + errorMsg;
+                      }
+                      
+                      // 更新消息状态
+                      setMessages(prev => prev.map(msg => 
+                        msg.id === tempMessageId 
+                          ? { 
+                              ...msg, 
+                              content: responseText,
+                              isStreaming: false,
+                              loading: false
+                            } 
+                          : msg
+                      ));
+                      
+                      hasReceivedEndEvent = true;
+                      continue;
+                    }
+                    
+                    // 对于普通消息事件，只有当存在content时才处理
+                    if (content) {
+                      // 关键修改：只在这三种情况下重置response内容
+                      // 1. 尚未收到任何内容
+                      // 2. 内容被标记为最终答案(eventData.isEnd为true)
+                      // 3. 内容似乎是一个完整消息而不是增量更新
+                      const isCompleteMessage = content.length > 20 && eventData.isEnd === true;
+                      const shouldReplaceContent = 
+                        !hasReceivedChunk || 
+                        isCompleteMessage || 
+                        (content.length > responseText.length * 2);  // 内容显著更长
+                      
+                      // 根据判断决定如何处理内容
+                      if (shouldReplaceContent) {
+                        console.log(`替换现有内容: 现有=${responseText.length}字符, 新内容=${content.length}字符`);
+                        responseText = content;
+                      } else {
+                        if (responseText.length === 0) {
+                          responseText = content;
+                        } else {
+                          // 如果内容没有明显变短，继续累积
+                          responseText += content;
+                        }
+                        console.log(`累积内容: 现在共${responseText.length}字符`);
+                      }
+                      
+                      // 提取元数据
+                      respConversationId = eventData.conversation_id || respConversationId;
+                      respUserId = eventData.user_id || respUserId;
+                      
+                      console.log(`收到消息内容[累积]: "${content.substring(0, 30)}${content.length > 30 ? '...' : ''}"`);
+                      hasReceivedChunk = true;
+                      hasUpdateInThisBatch = true;
+                      
+                      // 立即更新消息内容（这是关键部分）
+                      const currentResponseText = responseText;
+                      
+                      // 根据事件类型决定是否标记为完成
+                      const isComplete = eventData.event === "message_end" || eventData.type === "message_end" || eventData.is_end === true;
+                      if (isComplete) {
+                        console.log('收到最终消息，标记为完成');
+                        hasReceivedEndEvent = true;
+                      }
+                      
+                      console.log(`更新消息: 内容长度=${currentResponseText.length}, 是否完成=${isComplete}`);
+                      setMessages(prev => prev.map(msg => 
+                        msg.id === tempMessageId 
+                          ? { 
+                              ...msg, 
+                              content: currentResponseText,
+                              isStreaming: !isComplete,
+                              loading: false
+                            } 
+                          : msg
+                      ));
+                      
+                      // 记录最后更新时间
+                      lastUpdateTime = Date.now();
+                    } else {
+                      console.log('收到消息事件但没有有效内容，跳过处理');
+                    }
+                  }
+                  else if (eventData.event === "message_end" || eventData.type === "message_end" || eventData.event === "done" || eventData.type === "done") {
+                    // 处理消息结束事件
+                    console.log('收到message_end事件');
                     
                     // 提取元数据
                     respConversationId = eventData.conversation_id || respConversationId;
                     respUserId = eventData.user_id || respUserId;
                     
-                    console.log(`收到消息内容[累积]: "${content.substring(0, 30)}${content.length > 30 ? '...' : ''}"`);
-                    hasReceivedChunk = true;
-                    hasUpdateInThisBatch = true;
-                    
-                    // 立即更新消息内容（这是关键部分）
-                    const currentResponseText = responseText;
-                    
-                    // 根据事件类型决定是否标记为完成
-                    const isComplete = eventData.event === "message_end" || eventData.is_end === true;
-                    if (isComplete) {
-                      console.log('收到最终消息，标记为完成');
-                      hasReceivedEndEvent = true;
+                    // 如果有完整回答，更新内容
+                    if (eventData.answer) {
+                      responseText = eventData.answer;
+                      console.log(`从message_end.answer提取完整回答，长度: ${responseText.length}`);
                     }
                     
-                    console.log(`更新消息: 内容长度=${currentResponseText.length}, 是否完成=${isComplete}`);
+                    // 标记为完成
+                    hasReceivedEndEvent = true;
+                    
+                    // 更新消息为完成状态
                     setMessages(prev => prev.map(msg => 
                       msg.id === tempMessageId 
                         ? { 
                             ...msg, 
-                            content: currentResponseText,
-                            isStreaming: !isComplete,
+                            content: responseText,
+                            isStreaming: false,
                             loading: false
                           } 
                         : msg
                     ));
-                    
-                    // 记录最后更新时间
-                    lastUpdateTime = Date.now();
                   }
                 } catch (e) {
                   console.error('解析事件数据错误:', e, '原始数据:', data);
@@ -386,25 +494,33 @@ const processStreamResponse = async (response: Response, tempMessageId: string, 
     // 流处理完成后确保更新最终状态
     console.log('流式处理完成，最终文本长度:', responseText.length);
     
+    // 如果已经收到过有效内容并且正确处理了结束事件，则不需要额外操作
+    if (hasReceivedChunk && hasReceivedEndEvent) {
+      console.log('成功完成了流式处理，不需要额外更新状态');
+      return {
+        responseText,
+        conversationId: respConversationId,
+        userId: respUserId,
+        isNewConversation
+      };
+    }
+    
+    // 只有在特殊情况下才需要额外处理
     // 如果连接超时但有部分内容，保持这些内容
     if (connectionTimeout && responseText) {
       console.log('连接超时，使用已接收的内容作为最终结果');
-    }
-    
-    // 更新消息为最终状态
-    if (responseText) {
-      const finalResponseText = responseText;
+      
       setMessages(prev => prev.map(msg => 
         msg.id === tempMessageId 
           ? { 
               ...msg, 
-              content: finalResponseText,
+              content: responseText,
               loading: false,
               isStreaming: false
             } 
           : msg
       ));
-    } else if (connectionTimeout) {
+    } else if (connectionTimeout && !responseText) {
       // 如果连接超时且没有内容，显示超时消息
       setMessages(prev => prev.map(msg => 
         msg.id === tempMessageId 
@@ -423,6 +539,19 @@ const processStreamResponse = async (response: Response, tempMessageId: string, 
           ? { 
               ...msg, 
               content: "未收到任何响应数据，请检查网络连接或重试",
+              loading: false,
+              isStreaming: false
+            } 
+          : msg
+      ));
+    } else if (responseText) {
+      // 如果有内容但没有正确收到结束事件，也确保显示内容
+      const finalResponseText = responseText;
+      setMessages(prev => prev.map(msg => 
+        msg.id === tempMessageId 
+          ? { 
+              ...msg, 
+              content: finalResponseText,
               loading: false,
               isStreaming: false
             } 
@@ -494,13 +623,20 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, []);
 
   // 添加消息到列表
-  const addMessage = (content: string, isUser: boolean) => {
-    const newMessage: Message = {
-      id: `msg_${Date.now()}`,
-      content,
-      isUser,
-      timestamp: new Date()
-    };
+  const addMessage = (message: Message | string, isUser?: boolean) => {
+    let newMessage: Message;
+    
+    if (typeof message === 'string') {
+      newMessage = {
+        id: `msg_${Date.now()}`,
+        content: message,
+        isUser: isUser !== undefined ? isUser : false,
+        timestamp: new Date()
+      };
+    } else {
+      newMessage = message;
+    }
+    
     setMessages(prevMessages => [...prevMessages, newMessage]);
   };
 
@@ -575,11 +711,8 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         globalId: globalConversationId?.substring(0, 8) || 'null'
       });
       
-      // 如果是用户消息，添加到聊天记录
-      if (!isInitialMessage) {
-        addMessage(content, true);
-      }
-      
+      // 注意：我们不再在这里添加用户消息，因为现在由调用方负责处理
+      // 这样可以确保用户输入首先显示，然后再发送请求
       // 设置加载状态
       setIsLoading(true);
       
@@ -589,7 +722,7 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         ...prev, 
         {
           id: tempMessageId,
-          content: "AI正在思考中...",
+          content: data ? "AI正在分析数据中..." : "AI正在思考中...",
           isUser: false,
           timestamp: new Date(),
           loading: true,
@@ -605,15 +738,18 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         stream: true, // 请求流式响应
       };
       
-      // 如果有额外数据，添加到请求中
+      // 检查并处理漏洞数据
       if (data) {
-        // 处理漏洞数据
-        if (data.vulnerabilityData) {
+        // 检查是否是直接的漏洞数据对象
+        if (data.name !== undefined || data.cve_id !== undefined) {
+          console.log('检测到直接的漏洞数据对象');
+          payload.vulnerability_data = data;
+        }
+        // 检查漏洞数据格式 (兼容旧格式)
+        else if (data.vulnerabilityData) {
           console.log('包含漏洞数据，添加到payload中:', data.vulnerabilityData);
           payload.vulnerability_data = data.vulnerabilityData;
-          console.log('使用流式模式处理漏洞数据');
         }
-        
         // 处理其他输入数据
         if (data.inputs) {
           console.log('包含输入数据，添加到payload中:', data.inputs);
@@ -636,6 +772,18 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       console.log(`请求头: Content-Type=application/json`);
       console.log(`请求体: ${JSON.stringify(payload)}`);
       
+      // 立即更新占位消息以显示初始反馈
+      setMessages(prev => prev.map(msg => 
+        msg.id === tempMessageId 
+          ? { 
+              ...msg, 
+              content: "正在连接AI服务...",
+              loading: false,
+              isStreaming: true
+            } 
+          : msg
+      ));
+      
       // 使用fetch来发送POST请求获取流式响应
       try {
         const response = await fetch(chatUrl, {
@@ -653,6 +801,18 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           console.error('响应错误内容:', errorText);
           throw new Error(`HTTP错误 ${response.status}: ${errorText}`);
         }
+        
+        // 更新消息再次确认流式接收开始
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempMessageId 
+            ? { 
+                ...msg, 
+                content: "正在等待AI响应...\n\n",
+                loading: false,
+                isStreaming: true
+              } 
+            : msg
+        ));
         
         // 使用流式处理函数处理响应
         const result = await processStreamResponse(
@@ -734,26 +894,13 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
       
-      // 如果有user_id，添加到漏洞数据中
-      if (userId) {
-        console.log(`添加userId到漏洞数据: ${userId}`);
-        vulnerabilityData.user_id = userId;
-      }
-      
-      // 添加用户消息显示
-      const vulnerabilityName = vulnerabilityData.name || vulnerabilityData.cve_id || '未命名漏洞';
-      const userMessage = `请分析这个漏洞: ${vulnerabilityName}`;
-      
-      console.log('添加用户消息到聊天:', userMessage);
-      addMessage(userMessage, true);
-      
-      // 添加一个AI正在思考的消息
-      const loadingMessageId = `loading_${Date.now()}`;
+      // 先创建AI的占位回复
+      const loadingMessageId = `msg_loading_${Date.now()}`;
       setMessages(prev => [
-        ...prev,
+        ...prev, 
         {
           id: loadingMessageId,
-          content: 'AI正在分析漏洞数据...',
+          content: "开始分析漏洞数据...",
           isUser: false,
           timestamp: new Date(),
           loading: true,
@@ -761,32 +908,41 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       ]);
       
-      console.log('向后端API发送漏洞数据请求');
+      // 构造请求
+      const apiUrl = `${API_BASE_URL}/dify/chat/stream`;
       
-      // 准备请求数据
-      const payload = {
-        message: userMessage,
+      // 请求参数
+      const requestData = {
+        message: "请分析这个漏洞数据",
         vulnerability_data: vulnerabilityData,
-        conversation_id: conversationId,
-        user_id: userId,
-        stream: true // 启用流式响应
+        conversation_id: conversationId || undefined,
+        user_id: userId || undefined,
+        stream: true
       };
       
-      console.log('请求负载:', JSON.stringify(payload));
+      console.log(`发送漏洞分析请求: ${apiUrl}`);
+      console.log(`请求体:`, requestData);
       
-      // 关闭任何现有的流式连接
-      stopStreamingResponse();
+      // 立即更新占位消息以显示初始反馈
+      setMessages(prev => prev.map(msg => 
+        msg.id === loadingMessageId 
+          ? { 
+              ...msg, 
+              content: "正在连接AI服务...",
+              loading: false,
+              isStreaming: true
+            } 
+          : msg
+      ));
       
+      // 发送请求
       try {
-        // 使用与sendMessage方法相同的流式处理逻辑
-        const chatUrl = `${API_BASE_URL}/dify/chat/stream`;
-        console.log(`连接到流式API: ${chatUrl}, 环境: ${process.env.NODE_ENV}`);
-        
-        // 使用fetch发送POST请求获取流式响应
-        const response = await fetch(chatUrl, {
+        const response = await fetch(apiUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestData)
         });
         
         console.log('收到响应状态:', response.status);
@@ -796,6 +952,18 @@ export const AIChatProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           console.error('响应错误内容:', errorText);
           throw new Error(`HTTP错误 ${response.status}: ${errorText}`);
         }
+        
+        // 更新消息再次确认流式接收开始
+        setMessages(prev => prev.map(msg => 
+          msg.id === loadingMessageId 
+            ? { 
+                ...msg, 
+                content: "正在分析漏洞数据...\n\n",
+                loading: false,
+                isStreaming: true
+              } 
+            : msg
+        ));
         
         // 使用流式处理函数处理响应
         const result = await processStreamResponse(
