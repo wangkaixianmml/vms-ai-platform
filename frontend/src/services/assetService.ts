@@ -24,7 +24,7 @@ export const getAssets = async (params?: Record<string, any>): Promise<Asset[]> 
  */
 export const getAssetById = async (id: number): Promise<Asset | null> => {
   try {
-    const response = await api.get(`/api/v1/assets/${id}`);
+    const response = await api.get(`/api/assets/${id}`);
     return response.data;
   } catch (error) {
     console.error(`获取资产 ID: ${id} 详情失败`, error);
