@@ -1,10 +1,11 @@
 from fastapi import APIRouter
-from app.api.endpoints import dify, vulnerabilities, ai, assets
+from app.api.endpoints import vulnerabilities, assets, dify, ai, dashboard
 
 api_router = APIRouter()
 
 # 添加各个模块的路由
-api_router.include_router(dify.router, prefix="/dify", tags=["Dify AI"])
-api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["漏洞管理"])
-api_router.include_router(ai.router, prefix="/ai", tags=["AI辅助功能"])
-api_router.include_router(assets.router, prefix="/assets", tags=["资产管理"])
+api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["vulnerabilities"])
+api_router.include_router(assets.router, prefix="/assets", tags=["assets"])
+api_router.include_router(dify.router, prefix="/dify", tags=["dify"])
+api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
