@@ -192,88 +192,25 @@ async def stream_chat_with_ai(request: Request):
                 # 处理漏洞数据特殊情况
                 if vulnerability_data and not vulnerability_processed:
                     logger.info(f"检测到漏洞数据，将处理漏洞分析...")
-                    logger.info(f"漏洞数据格式: {type(vulnerability_data)}, 内容摘要: {str(vulnerability_data)[:100]}...")
                     vulnerability_processed = True
                     
                     try:
-                        # 确保vulnerability_data是字典类型
-                        if isinstance(vulnerability_data, dict):
-                            # 根据message内容决定提示词类型
-                            if "修复建议" in message or "修复方法" in message:
-                                logger.info("检测到修复建议请求，使用VULNERABILITY_REMEDIATION_PROMPT模板")
-                                # 使用导入的提示词模板
-                                formatted_prompt = VULNERABILITY_REMEDIATION_PROMPT.format(
-                                    name=vulnerability_data.get("name", "未知漏洞"),
-                                    cve_id=vulnerability_data.get("cve_id", "无CVE编号"),
-                                    vulnerability_type=vulnerability_data.get("vulnerability_type", "未知类型"),
-                                    risk_level=vulnerability_data.get("risk_level", "未知"),
-                                    description=vulnerability_data.get("description", "无描述"),
-                                    affected_components=vulnerability_data.get("affected_components", "未知"),
-                                    status=vulnerability_data.get("status", "未知")
-                                )
-                            else:
-                                logger.info("检测到常规分析请求，使用VULNERABILITY_ANALYSIS_PROMPT模板")
-                                # 使用导入的提示词模板
-                                formatted_prompt = VULNERABILITY_ANALYSIS_PROMPT.format(
-                                    name=vulnerability_data.get("name", "未知漏洞"),
-                                    cve_id=vulnerability_data.get("cve_id", "无CVE编号"),
-                                    vulnerability_type=vulnerability_data.get("vulnerability_type", "未知类型"),
-                                    risk_level=vulnerability_data.get("risk_level", "未知"),
-                                    description=vulnerability_data.get("description", "无描述"),
-                                    impact_details=vulnerability_data.get("impact_details", "未知"),
-                                    affected_components=vulnerability_data.get("affected_components", "未知"),
-                                    discovery_date=vulnerability_data.get("discovery_date", "未知"),
-                                    status=vulnerability_data.get("status", "未知")
-                                )
-                        else:
-                            # 如果不是字典，尝试转换
-                            logger.warning(f"漏洞数据不是字典类型: {type(vulnerability_data)}")
-                            if isinstance(vulnerability_data, str):
-                                try:
-                                    vulnerability_data = json.loads(vulnerability_data)
-                                    logger.info("成功将字符串转换为JSON对象")
-                                    
-                                    # 重新尝试使用模板
-                                    if "修复建议" in message or "修复方法" in message:
-                                        formatted_prompt = VULNERABILITY_REMEDIATION_PROMPT.format(
-                                            name=vulnerability_data.get("name", "未知漏洞"),
-                                            cve_id=vulnerability_data.get("cve_id", "无CVE编号"),
-                                            vulnerability_type=vulnerability_data.get("vulnerability_type", "未知类型"),
-                                            risk_level=vulnerability_data.get("risk_level", "未知"),
-                                            description=vulnerability_data.get("description", "无描述"),
-                                            affected_components=vulnerability_data.get("affected_components", "未知"),
-                                            status=vulnerability_data.get("status", "未知")
-                                        )
-                                    else:
-                                        formatted_prompt = VULNERABILITY_ANALYSIS_PROMPT.format(
-                                            name=vulnerability_data.get("name", "未知漏洞"),
-                                            cve_id=vulnerability_data.get("cve_id", "无CVE编号"),
-                                            vulnerability_type=vulnerability_data.get("vulnerability_type", "未知类型"),
-                                            risk_level=vulnerability_data.get("risk_level", "未知"),
-                                            description=vulnerability_data.get("description", "无描述"),
-                                            impact_details=vulnerability_data.get("impact_details", "未知"),
-                                            affected_components=vulnerability_data.get("affected_components", "未知"),
-                                            discovery_date=vulnerability_data.get("discovery_date", "未知"),
-                                            status=vulnerability_data.get("status", "未知")
-                                        )
-                                except:
-                                    logger.error(f"无法解析漏洞数据字符串: {vulnerability_data[:100]}...")
-                                    formatted_prompt = f"请分析以下信息: {message}\n\n数据: {str(vulnerability_data)[:500]}"
-                            else:
-                                # 如果转换失败或本身就不是字符串，使用原始消息
-                                formatted_prompt = f"请分析以下信息: {message}\n\n数据: {str(vulnerability_data)[:500]}"
+                        # 构建漏洞分析提示
+                        prompt = f"请分析以下漏洞信息并给出建议：\n\n{json.dumps(vulnerability_data, ensure_ascii=False, indent=2)}"
+                        logger.info(f"准备发送漏洞分析请求，提示长度: {len(prompt)}")
                         
-                        logger.info(f"准备发送漏洞分析请求，提示长度: {len(formatted_prompt)}")
-                        
-                        # 初始化计数器
-                        chunk_count = 0
-                        total_content_length = 0
-                        
-                        # 直接开始处理，不添加任何延迟
+                        # 发送初始分析消息
+                        start_analysis_msg = "data: " + json.dumps({
+                            "event": "message",
+                            "answer": "正在分析漏洞数据...  \n  \n",  # 使用markdown格式的换行
+                            "conversation_id": conversation_id,
+                            "user_id": user_id
+                        }) + "\n\n"
+                        yield start_analysis_msg
                         
                         # 使用stream_chat方法发送请求并获取响应
                         try:
-                            async for chunk in dify_service.stream_chat(conversation_id, formatted_prompt, user_id):
+                            async for chunk in dify_service.stream_chat(conversation_id, prompt, user_id):
                                 # 调试信息：记录收到的原始数据
                                 logger.info(f"原始响应数据: 类型={type(chunk)}, 内容摘要={str(chunk)[:50]}...")
                                 
@@ -303,7 +240,7 @@ async def stream_chat_with_ai(request: Request):
                             error_event = "data: " + json.dumps({
                                 "event": "error",
                                 "error": f"漏洞分析请求失败: {str(stream_error)}"
-                            }) + "\n\n"
+                        }) + "\n\n"
                             yield error_event
                     
                     except Exception as e:
@@ -316,7 +253,7 @@ async def stream_chat_with_ai(request: Request):
                             "error": error_message
                         }) + "\n\n"
                         yield error_event
-                    
+                
                     # 设置一个标志，以防止普通消息处理逻辑重复运行
                     vulnerability_processed = True
                 
@@ -346,167 +283,167 @@ async def stream_chat_with_ai(request: Request):
                     
                     # 决定使用的消息内容
                     stream_message = analysis_prompt if vulnerability_data else message
+                
+                # 使用dify_service.stream_chat实现真正的流式响应
+                logger.info(f"开始流式响应 - 消息类型: {'漏洞分析' if vulnerability_data else '普通消息'}")
+                received_any_chunk = False  # 标记是否收到过任何chunk
+                received_any_content = False  # 标记是否收到过任何有效内容
+                last_error = None  # 记录最后发生的错误
+                
+                try:
+                    async for chunk in dify_service.stream_chat(conversation_id, stream_message, user_id, inputs):
+                        received_any_chunk = True  # 标记已收到chunk
+                        # 检查chunk是否为字典类型（stream_chat方法的直接返回）
+                        if isinstance(chunk, dict):
+                            # 处理事件类型，可能来自type字段或event字段
+                            chunk_type = chunk.get("type") or chunk.get("event")
+                            logger.info(f"收到流事件: 类型={chunk_type}")
                     
-                    # 使用dify_service.stream_chat实现真正的流式响应
-                    logger.info(f"开始流式响应 - 消息类型: {'漏洞分析' if vulnerability_data else '普通消息'}")
-                    received_any_chunk = False  # 标记是否收到过任何chunk
-                    received_any_content = False  # 标记是否收到过任何有效内容
-                    last_error = None  # 记录最后发生的错误
-                    
-                    try:
-                        async for chunk in dify_service.stream_chat(conversation_id, stream_message, user_id, inputs):
-                            received_any_chunk = True  # 标记已收到chunk
-                            # 检查chunk是否为字典类型（stream_chat方法的直接返回）
-                            if isinstance(chunk, dict):
-                                # 处理事件类型，可能来自type字段或event字段
-                                chunk_type = chunk.get("type") or chunk.get("event")
-                                logger.info(f"收到流事件: 类型={chunk_type}")
-                                
-                                # 处理元数据
-                                if chunk_type == "metadata":
-                                    logger.info(f"收到元数据: {chunk}")
-                                    # 如果是新会话，更新会话ID
-                                    if chunk.get("is_new_conversation"):
-                                        conversation_id = chunk.get("conversation_id")
-                                        user_id = chunk.get("user_id")
-                                        # 发送会话更新通知
-                                        notification_event = "data: " + json.dumps({
-                                            "event": "notification",
-                                            "message": "会话已更新",
-                                            "conversation_id": conversation_id,
-                                            "user_id": user_id,
-                                            "is_new_conversation": True
-                                        }) + "\n\n"
-                                        logger.info("发送notification事件")
-                                        yield notification_event
-                                
-                                # 处理内容块 (chunk或message类型)
-                                elif chunk_type in ["chunk", "message"]:
-                                    chunk_count += 1
-                                    # 试图从不同字段获取内容
-                                    content = chunk.get("content", "") or chunk.get("answer", "")
-                                    
-                                    # 更新内容长度统计
-                                    content_length = len(content)
-                                    total_content_length += content_length
-                                    
-                                    # 如果内容不为空，标记为收到有效内容
-                                    if content_length > 0:
-                                        received_any_content = True
-                                    
-                                    # 添加到累积的回答（仅用于最终完整回复）
-                                    full_answer += content
-                                    
-                                    # 发送调试日志
-                                    logger.info(f"准备发送message事件 #{chunk_count}: 内容长度={content_length}, 累计长度={total_content_length}, 内容前30个字符: {content[:30]}")
-                                    
-                                    # 构造符合Dify API的message事件
-                                    chunk_event = "data: " + json.dumps({
-                                        "event": "message",
-                                        "answer": content,  # 只发送增量内容
-                                        "conversation_id": chunk.get("conversation_id") or conversation_id,
-                                        "user_id": chunk.get("user_id") or user_id,
-                                        "message_id": chunk.get("message_id")
-                                    }) + "\n\n"
-                                    
-                                    # 发送事件
-                                    logger.info(f"发送message事件 #{chunk_count}")
-                                    yield chunk_event
-                                    logger.info(f"已发送message事件 #{chunk_count}")
-                                
-                                # 处理结束标记
-                                elif chunk_type in ["end", "message_end", "done"]:
-                                    logger.info("收到结束标记")
-                                    # 如果收到了会话ID，更新它
-                                    if chunk.get("conversation_id"):
-                                        conversation_id = chunk.get("conversation_id")
-                                    if chunk.get("user_id"):
-                                        user_id = chunk.get("user_id")
-                                    
-                                    # 检查是否有内容生成
-                                    if not received_any_content and full_answer.strip() == "":
-                                        logger.warning("收到了结束标记但没有有效内容")
-                                        full_answer = "AI生成的响应为空。请尝试使用更清晰的描述或者提供更详细的信息。"
-                                    
-                                    # 发送最终消息，使用message_end事件类型，但不重复发送完整内容
-                                    message_event = "data: " + json.dumps({
-                                        "event": "message_end",
-                                        "answer": "",  # 不再重复发送完整内容
+                            # 处理元数据
+                            if chunk_type == "metadata":
+                                logger.info(f"收到元数据: {chunk}")
+                                # 如果是新会话，更新会话ID
+                                if chunk.get("is_new_conversation"):
+                                    conversation_id = chunk.get("conversation_id")
+                                    user_id = chunk.get("user_id")
+                                    # 发送会话更新通知
+                                    notification_event = "data: " + json.dumps({
+                                        "event": "notification",
+                                        "message": "会话已更新",
                                         "conversation_id": conversation_id,
                                         "user_id": user_id,
-                                        "message_id": chunk.get("message_id")
+                                        "is_new_conversation": True
                                     }) + "\n\n"
-                                    logger.info("发送message_end事件（无内容）")
-                                    yield message_event
-                                
-                                # 处理错误
-                                elif chunk_type == "error":
-                                    error_message = chunk.get("error", "未知错误")
-                                    last_error = error_message  # 记录错误信息
-                                    logger.error(f"流式聊天错误: {error_message}")
-                                    error_event = "data: " + json.dumps({
-                                        "event": "error",
-                                        "error": error_message
-                                    }) + "\n\n"
-                                    logger.info("发送error事件")
-                                    yield error_event
-                            # 如果已经是SSE格式的字符串，直接传递
-                            elif isinstance(chunk, str) and chunk.startswith("data:"):
-                                # 尝试解析字符串中的JSON数据
-                                try:
-                                    chunk_str = chunk.replace("data:", "").strip()
-                                    if chunk_str:
-                                        chunk_data = json.loads(chunk_str)
-                                        # 检查是否有内容
-                                        if chunk_data.get("event") == "message" and "answer" in chunk_data:
-                                            content = chunk_data.get("answer", "")
-                                            if content:
-                                                received_any_content = True
-                                                total_content_length += len(content)
-                                except Exception as e:
-                                    logger.warning(f"解析SSE字符串时出错: {str(e)}")
-                                
-                                # 直接传递已经是SSE格式的数据
-                                yield chunk
-                            else:
-                                # 其他类型的数据，记录并继续
-                                logger.warning(f"未知数据类型: {type(chunk)}")
-                                yield str(chunk)
-                    except Exception as stream_error:
-                        logger.error(f"流式处理请求出错: {str(stream_error)}")
-                        last_error = str(stream_error)  # 记录错误信息
+                                    logger.info("发送notification事件")
+                                    yield notification_event
                     
-                    # 检查是否收到有效的数据
-                    if not received_any_chunk:
-                        logger.warning("未收到任何chunk数据，触发重试机制")
-                        # 尝试通过非流式API获取响应
-                        try:
-                            result = await dify_service.send_message(conversation_id, stream_message, user_id, inputs)
-                            if result and "answer" in result and result["answer"]:
-                                answer = result["answer"]
-                                logger.info(f"重试成功，通过非流式API获取响应: {answer[:50]}...")
+                            # 处理内容块 (chunk或message类型)
+                            elif chunk_type in ["chunk", "message"]:
+                                chunk_count += 1
+                                # 试图从不同字段获取内容
+                                content = chunk.get("content", "") or chunk.get("answer", "")
                                 
-                                # 发送内容
-                                content_event = "data: " + json.dumps({
+                                # 更新内容长度统计
+                                content_length = len(content)
+                                total_content_length += content_length
+                                
+                                # 如果内容不为空，标记为收到有效内容
+                                if content_length > 0:
+                                    received_any_content = True
+                        
+                                # 添加到累积的回答（仅用于最终完整回复）
+                                full_answer += content
+                        
+                                # 发送调试日志
+                                logger.info(f"准备发送message事件 #{chunk_count}: 内容长度={content_length}, 累计长度={total_content_length}, 内容前30个字符: {content[:30]}")
+                        
+                                # 构造符合Dify API的message事件
+                                chunk_event = "data: " + json.dumps({
                                     "event": "message",
-                                    "answer": answer,
-                                    "conversation_id": result.get("conversation_id", conversation_id),
-                                    "user_id": result.get("user_id", user_id)
+                                    "answer": content,  # 只发送增量内容
+                                    "conversation_id": chunk.get("conversation_id") or conversation_id,
+                                    "user_id": chunk.get("user_id") or user_id,
+                                    "message_id": chunk.get("message_id")
                                 }) + "\n\n"
-                                yield content_event
-                                
-                                # 发送结束消息
-                                end_event = "data: " + json.dumps({
+                        
+                                # 发送事件
+                                logger.info(f"发送message事件 #{chunk_count}")
+                                yield chunk_event
+                                logger.info(f"已发送message事件 #{chunk_count}")
+                    
+                            # 处理结束标记
+                            elif chunk_type in ["end", "message_end", "done"]:
+                                logger.info("收到结束标记")
+                                # 如果收到了会话ID，更新它
+                                if chunk.get("conversation_id"):
+                                    conversation_id = chunk.get("conversation_id")
+                                if chunk.get("user_id"):
+                                    user_id = chunk.get("user_id")
+                        
+                                # 检查是否有内容生成
+                                if not received_any_content and full_answer.strip() == "":
+                                    logger.warning("收到了结束标记但没有有效内容")
+                                    full_answer = "AI生成的响应为空。请尝试使用更清晰的描述或者提供更详细的信息。"
+                                    
+                                # 发送最终消息，使用message_end事件类型，但不重复发送完整内容
+                                message_event = "data: " + json.dumps({
                                     "event": "message_end",
-                                    "answer": answer,
-                                    "conversation_id": result.get("conversation_id", conversation_id),
-                                    "user_id": result.get("user_id", user_id)
+                                    "answer": "",  # 不再重复发送完整内容
+                                    "conversation_id": conversation_id,
+                                    "user_id": user_id,
+                                    "message_id": chunk.get("message_id")
                                 }) + "\n\n"
-                                yield end_event
-                                return  # 提前返回
-                        except Exception as fallback_error:
-                            logger.error(f"通过非流式API重试失败: {str(fallback_error)}")
-                            last_error = str(fallback_error)
+                                logger.info("发送message_end事件（无内容）")
+                                yield message_event
+                    
+                            # 处理错误
+                            elif chunk_type == "error":
+                                error_message = chunk.get("error", "未知错误")
+                                last_error = error_message  # 记录错误信息
+                                logger.error(f"流式聊天错误: {error_message}")
+                                error_event = "data: " + json.dumps({
+                                    "event": "error",
+                                    "error": error_message
+                                }) + "\n\n"
+                                logger.info("发送error事件")
+                                yield error_event
+                        # 如果已经是SSE格式的字符串，直接传递
+                        elif isinstance(chunk, str) and chunk.startswith("data:"):
+                            # 尝试解析字符串中的JSON数据
+                            try:
+                                chunk_str = chunk.replace("data:", "").strip()
+                                if chunk_str:
+                                    chunk_data = json.loads(chunk_str)
+                                    # 检查是否有内容
+                                    if chunk_data.get("event") == "message" and "answer" in chunk_data:
+                                        content = chunk_data.get("answer", "")
+                                        if content:
+                                            received_any_content = True
+                                            total_content_length += len(content)
+                            except Exception as e:
+                                logger.warning(f"解析SSE字符串时出错: {str(e)}")
+                                
+                            # 直接传递已经是SSE格式的数据
+                            yield chunk
+                        else:
+                            # 其他类型的数据，记录并继续
+                            logger.warning(f"未知数据类型: {type(chunk)}")
+                            yield str(chunk)
+                except Exception as stream_error:
+                    logger.error(f"流式处理请求出错: {str(stream_error)}")
+                    last_error = str(stream_error)  # 记录错误信息
+                
+                # 检查是否收到有效的数据
+                if not received_any_chunk:
+                    logger.warning("未收到任何chunk数据，触发重试机制")
+                    # 尝试通过非流式API获取响应
+                    try:
+                        result = await dify_service.send_message(conversation_id, stream_message, user_id, inputs)
+                        if result and "answer" in result and result["answer"]:
+                            answer = result["answer"]
+                            logger.info(f"重试成功，通过非流式API获取响应: {answer[:50]}...")
+                            
+                            # 发送内容
+                            content_event = "data: " + json.dumps({
+                                "event": "message",
+                                "answer": answer,
+                                "conversation_id": result.get("conversation_id", conversation_id),
+                                "user_id": result.get("user_id", user_id)
+                            }) + "\n\n"
+                            yield content_event
+                            
+                            # 发送结束消息
+                            end_event = "data: " + json.dumps({
+                                "event": "message_end",
+                                "answer": answer,
+                                "conversation_id": result.get("conversation_id", conversation_id),
+                                "user_id": result.get("user_id", user_id)
+                            }) + "\n\n"
+                            yield end_event
+                            return  # 提前返回
+                    except Exception as fallback_error:
+                        logger.error(f"通过非流式API重试失败: {str(fallback_error)}")
+                        last_error = str(fallback_error)
                         
                         # 如果重试失败，发送备用消息
                         logger.warning("重试失败，发送备用错误消息")
@@ -525,28 +462,28 @@ async def stream_chat_with_ai(request: Request):
                             "user_id": user_id
                         }) + "\n\n"
                         yield end_msg
-                    elif not received_any_content:
-                        # 收到了chunk但没有有效内容
-                        logger.warning(f"收到了{chunk_count}个chunk，但没有有效内容")
-                        
-                        # 发送提示消息
-                        empty_message = "data: " + json.dumps({
-                            "event": "message",
-                            "answer": "服务器返回了空响应。请尝试重新提问或更改问题表述。",
-                            "conversation_id": conversation_id,
-                            "user_id": user_id
-                        }) + "\n\n"
-                        yield empty_message
-                        
-                        # 发送结束消息
-                        end_message = "data: " + json.dumps({
-                            "event": "message_end",
-                            "answer": "服务器返回了空响应。请尝试重新提问或更改问题表述。",
-                            "conversation_id": conversation_id,
-                            "user_id": user_id
-                        }) + "\n\n"
-                        yield end_message
-                
+                elif not received_any_content:
+                    # 收到了chunk但没有有效内容
+                    logger.warning(f"收到了{chunk_count}个chunk，但没有有效内容")
+                    
+                    # 发送提示消息
+                    empty_message = "data: " + json.dumps({
+                        "event": "message",
+                        "answer": "服务器返回了空响应。请尝试重新提问或更改问题表述。",
+                        "conversation_id": conversation_id,
+                        "user_id": user_id
+                    }) + "\n\n"
+                    yield empty_message
+                    
+                    # 发送结束消息
+                    end_message = "data: " + json.dumps({
+                        "event": "message_end",
+                        "answer": "服务器返回了空响应。请尝试重新提问或更改问题表述。",
+                        "conversation_id": conversation_id,
+                        "user_id": user_id
+                    }) + "\n\n"
+                    yield end_message
+            
             except Exception as e:
                 # 发送错误信息
                 error_message = f"流式聊天出错: {str(e)}"
