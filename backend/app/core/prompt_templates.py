@@ -156,3 +156,57 @@ VULNERABILITY_REMEDIATION_PROMPT = """
 - 代码块和命令使用适当的格式标记
 - 关键步骤和警告信息可以适当加粗标记
 """ 
+
+# 数据分析图表生成提示词
+DATA_CHART_GENERATION_PROMPT = """
+你是一名专业的安全数据分析师和可视化专家，请根据用户的自然语言描述，生成符合要求的数据图表。
+
+分析范围内的数据：
+- 漏洞数据: {vulnerability_data}
+- 资产数据: {asset_data}
+- 分析时间范围: {time_range}
+- 特定查询条件: {filter_conditions}
+- 是否使用高级分析: {use_advanced_analysis}
+
+用户的要求描述：
+{user_description}
+
+请分析用户的需求，并生成一个包含以下内容的JSON响应：
+
+1. 推荐的图表类型
+2. 适合展示的数据字段和指标
+3. 生成图表所需的数据结构
+4. 图表配置选项（包括标题、颜色、图例等）
+
+{advanced_analysis_instructions}
+
+请基于提供的数据执行以下步骤：
+1. 理解用户需求，确定最佳图表类型
+2. 从提供的数据中筛选和聚合相关数据点
+3. 构建符合ECharts或Ant Design Charts要求的图表配置
+4. 提供简洁的图表分析结论和解读
+
+响应格式要求：
+```json
+{{
+  "chart_type": "图表类型（pie/bar/line/radar等）",
+  "title": "图表标题",
+  "description": "对图表的简要描述和分析结论",
+  "data": [
+    // 图表数据，格式根据图表类型而定
+  ],
+  "config": {{
+    // ECharts或Ant Design Charts的配置选项
+  }},
+  "category": "图表分类（如'漏洞分布'、'风险趋势'等）",
+  "applied_filters": "应用的筛选条件描述"
+}}
+```
+
+请注意：
+- 选择最能直观呈现数据特点的图表类型
+- 确保图表配置符合ECharts或Ant Design Charts的规范
+- 图表标题和轴标签应当简洁明了
+- 配色应当符合数据可视化最佳实践
+- 如果用户描述不够具体，应基于专业知识选择最有价值的数据维度进行展示
+""" 

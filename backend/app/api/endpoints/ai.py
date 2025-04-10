@@ -1,19 +1,23 @@
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import json
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 import traceback
+from datetime import datetime, timedelta
 
 from app.services.dify_service import DifyService
 from app.core.prompt_templates import (
     VULNERABILITY_AUTOCOMPLETE_PROMPT, 
     VULNERABILITY_RISK_ASSESSMENT_PROMPT,
     VULNERABILITY_ANALYSIS_PROMPT,
-    VULNERABILITY_REMEDIATION_PROMPT
+    VULNERABILITY_REMEDIATION_PROMPT,
+    DATA_CHART_GENERATION_PROMPT
 )
 from app.api.deps import get_dify_service
 from app.core.config import settings
+from app.api.endpoints.vulnerabilities import mock_vulnerabilities, get_vulnerabilities
+from app.api.endpoints.assets import mock_assets, get_assets
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -30,6 +34,27 @@ class VulnerabilityAutoCompleteResponse(BaseModel):
     remediation_steps: Optional[str] = None
     impact_details: Optional[str] = None
     affected_components: Optional[str] = None
+
+class DataAnalysisRequest(BaseModel):
+    """数据分析请求模型"""
+    time_range: Optional[str] = "all"  # all, last_week, last_month, last_year, custom
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    vulnerability_ids: Optional[List[int]] = None
+    asset_ids: Optional[List[int]] = None
+    filter_conditions: Optional[Dict[str, Any]] = None
+    user_description: str
+    use_advanced_analysis: Optional[bool] = False  # 是否使用高级分析
+
+class ChartData(BaseModel):
+    """图表数据模型"""
+    chart_type: str
+    title: str
+    description: str
+    data: List[Dict[str, Any]]
+    config: Dict[str, Any]
+    category: str
+    applied_filters: str
 
 @router.post("/autocomplete/vulnerability", response_model=VulnerabilityAutoCompleteResponse)
 async def autocomplete_vulnerability(
@@ -313,4 +338,152 @@ async def get_vulnerability_remediation(
         return {
             "success": False,
             "error": f"获取修复建议过程中发生错误: {str(e)}"
-        } 
+        }
+
+@router.post("/data-analysis/chart", response_model=ChartData)
+async def generate_chart(
+    request: DataAnalysisRequest,
+    dify_service: DifyService = Depends(get_dify_service)
+):
+    """
+    根据用户描述和数据范围生成图表
+    """
+    try:
+        logger.info(f"收到数据分析请求: 描述={request.user_description}, 时间范围={request.time_range}, 高级分析={request.use_advanced_analysis}")
+        
+        # 获取漏洞数据
+        vulnerabilities = []
+        if request.vulnerability_ids:
+            # 如果指定了具体的漏洞ID列表
+            vulnerabilities = [v for v in mock_vulnerabilities if v.get("id") in request.vulnerability_ids]
+        else:
+            # 否则获取所有漏洞（后续会根据filter_conditions过滤）
+            vulnerabilities = mock_vulnerabilities
+        
+        # 获取资产数据
+        assets = []
+        if request.asset_ids:
+            # 如果指定了具体的资产ID列表
+            assets = [a for a in mock_assets if a.get("id") in request.asset_ids]
+        else:
+            # 否则获取所有资产
+            assets = mock_assets
+        
+        # 处理时间范围
+        time_range_str = "所有时间"
+        if request.time_range != "all":
+            now = datetime.now()
+            
+            if request.time_range == "last_week":
+                start_date = now - timedelta(days=7)
+                time_range_str = "最近一周"
+            elif request.time_range == "last_month":
+                start_date = now - timedelta(days=30)
+                time_range_str = "最近一个月"
+            elif request.time_range == "last_year":
+                start_date = now - timedelta(days=365)
+                time_range_str = "最近一年"
+            elif request.time_range == "custom" and request.start_date and request.end_date:
+                try:
+                    start_date = datetime.fromisoformat(request.start_date.replace('Z', '+00:00'))
+                    end_date = datetime.fromisoformat(request.end_date.replace('Z', '+00:00'))
+                    time_range_str = f"{start_date.strftime('%Y-%m-%d')}至{end_date.strftime('%Y-%m-%d')}"
+                except ValueError:
+                    logger.error(f"日期格式错误: start_date={request.start_date}, end_date={request.end_date}")
+                    raise HTTPException(status_code=400, detail="日期格式错误，请使用ISO格式，例如: 2023-01-01")
+            
+            # 如果设置了时间范围，过滤漏洞数据
+            if request.time_range != "custom":
+                vulnerabilities = [v for v in vulnerabilities if datetime.fromisoformat(v.get("discovery_date").replace('Z', '+00:00')) >= start_date]
+            else:
+                vulnerabilities = [
+                    v for v in vulnerabilities 
+                    if datetime.fromisoformat(v.get("discovery_date").replace('Z', '+00:00')) >= start_date
+                    and datetime.fromisoformat(v.get("discovery_date").replace('Z', '+00:00')) <= end_date
+                ]
+        
+        # 应用其他过滤条件
+        filter_conditions_str = "无额外筛选条件"
+        if request.filter_conditions:
+            filter_conditions_str = ", ".join([f"{k}={v}" for k, v in request.filter_conditions.items()])
+            # 这里可以实现更复杂的过滤逻辑
+        
+        # 准备高级分析说明
+        advanced_analysis_instructions = ""
+        if request.use_advanced_analysis:
+            advanced_analysis_instructions = """
+            由于启用了高级分析，请执行以下额外步骤：
+            1. 进行多维度的数据关联分析，包括：
+               - 漏洞与资产的关联分析
+               - 时间序列趋势分析
+               - 风险等级分布分析
+               - 漏洞类型与资产类型的关联分析
+            2. 生成更复杂的图表配置：
+               - 使用组合图表展示多个维度的数据
+               - 添加交互式数据筛选功能
+               - 实现数据钻取功能
+               - 优化图表布局和视觉效果
+            3. 提供更深入的分析结论：
+               - 识别数据中的异常模式
+               - 预测潜在的安全风险趋势
+               - 提供基于数据的优化建议
+            """
+        
+        # 准备提示词
+        prompt = DATA_CHART_GENERATION_PROMPT.format(
+            vulnerability_data=json.dumps(vulnerabilities[:10], ensure_ascii=False),  # 限制数据量
+            asset_data=json.dumps(assets[:10], ensure_ascii=False),  # 限制数据量
+            time_range=time_range_str,
+            filter_conditions=filter_conditions_str,
+            user_description=request.user_description,
+            use_advanced_analysis="是" if request.use_advanced_analysis else "否",
+            advanced_analysis_instructions=advanced_analysis_instructions
+        )
+        
+        logger.debug(f"构造的数据分析提示词: {prompt[:200]}...")
+        
+        # 发送到AI服务获取图表配置
+        response = await dify_service.send_first_message(
+            message=prompt
+        )
+        
+        # 解析响应
+        if response and response.get("answer"):
+            content = response.get("answer")
+            
+            # 提取JSON部分
+            try:
+                json_start = content.find('```json') + 7
+                json_end = content.rfind('```')
+                
+                if json_start > 6 and json_end > json_start:
+                    json_str = content[json_start:json_end].strip()
+                    logger.debug(f"提取的JSON字符串: {json_str[:200]}...")
+                    
+                    chart_config = json.loads(json_str)
+                    
+                    # 确保数据字段完整
+                    required_fields = ["chart_type", "title", "description", "data", "config", "category", "applied_filters"]
+                    for field in required_fields:
+                        if field not in chart_config:
+                            chart_config[field] = "" if field != "data" and field != "config" else {}
+                    
+                    return chart_config
+                else:
+                    # 尝试整体解析
+                    logger.warning("未找到JSON标记，尝试直接解析整个响应")
+                    try:
+                        chart_config = json.loads(content)
+                        return chart_config
+                    except:
+                        raise ValueError("响应中未找到有效的JSON结构，无法解析图表配置")
+            except Exception as e:
+                logger.error(f"解析AI生成的图表配置失败: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"解析图表配置失败: {str(e)}")
+        else:
+            logger.error("AI服务未返回有效响应")
+            raise HTTPException(status_code=500, detail="未获得有效的图表配置")
+    
+    except Exception as e:
+        logger.exception(f"生成图表配置时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"生成图表配置失败: {str(e)}") 
