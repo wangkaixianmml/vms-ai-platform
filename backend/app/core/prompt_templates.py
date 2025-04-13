@@ -53,6 +53,11 @@ VULNERABILITY_RISK_ASSESSMENT_PROMPT = """
 - 影响组件：{affected_components}
 - 关联资产信息：{asset_info}
 
+重要说明：
+1. 必须使用提供的关联资产信息进行评估，即使某些字段显示为"未知"
+2. 如果资产信息显示为"未知"，请基于漏洞类型和影响范围进行合理推断
+3. 不得忽略或跳过任何资产属性的评估
+
 对关联资产的评估必须严格按照以下属性进行：
 1. 资产等级（高/中/低）- 资产的重要程度
 2. 资产网络属性（内网/外网/DMZ）- 资产所在网络位置
@@ -74,7 +79,14 @@ VULNERABILITY_RISK_ASSESSMENT_PROMPT = """
   "assessment_reasoning": "详细评估理由，解释VPR评分和优先级的计算依据",
   "technical_risk_factors": ["列出影响技术风险评分的关键因素"],
   "business_risk_factors": ["列出影响业务风险评分的关键因素"],
-  "remediation_priority": "修复建议和优先级说明"
+  "remediation_priority": "修复建议和优先级说明",
+  "asset_assessment": {{
+    "asset_level": "资产等级评估结果",
+    "network_property": "网络属性评估结果",
+    "exposure": "暴露面评估结果",
+    "business_system": "业务系统评估结果",
+    "business_impact": "业务影响评估结果"
+  }}
 }}
 ```
 
@@ -89,6 +101,7 @@ VULNERABILITY_RISK_ASSESSMENT_PROMPT = """
 - 如果关键信息缺失，请在分析中指出，并基于可用信息做出最佳评估
 - 评分应符合业界标准，并保持一致性
 - 提供详细的评估理由，确保评估结果具有说服力
+- 必须对每个资产属性进行评估，即使原始信息显示为"未知"
 """ 
 
 # 漏洞分析提示词
