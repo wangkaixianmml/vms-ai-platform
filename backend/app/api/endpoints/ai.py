@@ -240,7 +240,33 @@ async def assess_vulnerability_risk(
                     
                     # 记录完整的结果
                     logger.info(f"风险评估结果: {assessment_result}")
-                    logger.info(f"风险评估结果: VPR评分 = {assessment_result.get('vpr_score')}, 优先级 = {assessment_result.get('priority')}")
+                    
+                    # 确保VPR评分和优先级一致
+                    if 'vpr_score' in assessment_result:
+                        vpr_score = assessment_result['vpr_score']
+                        
+                        # 使用配置文件中的VPR优先级映射关系
+                        correct_priority = None
+                        for priority, score_range in settings.VPR_PRIORITY_MAPPING.items():
+                            min_score, max_score = score_range
+                            if min_score <= vpr_score <= max_score:
+                                correct_priority = priority
+                                break
+                        
+                        # 如果找到正确的优先级，且与AI返回的不同，则进行调整
+                        if correct_priority:
+                            if 'priority' not in assessment_result or assessment_result['priority'] != correct_priority:
+                                original_priority = assessment_result.get('priority', '未知')
+                                logger.warning(f"调整优先级: 原始={original_priority}, VPR={vpr_score}, 正确优先级={correct_priority}")
+                                assessment_result['priority'] = correct_priority
+                                
+                                # 在评估理由中添加说明
+                                if 'assessment_reasoning' in assessment_result:
+                                    assessment_result['assessment_reasoning'] += f"\n\n注意: 根据VPR评分 {vpr_score} 和系统配置，优先级已自动调整为 {correct_priority}。"
+                        else:
+                            logger.error(f"无法为VPR评分 {vpr_score} 找到匹配的优先级")
+                    
+                    logger.info(f"最终风险评估结果: VPR评分 = {assessment_result.get('vpr_score')}, 优先级 = {assessment_result.get('priority')}")
                     
                     # 检查是否包含资产评估信息
                     if 'asset_assessment' in assessment_result:
@@ -256,6 +282,27 @@ async def assess_vulnerability_risk(
                 else:
                     # 尝试直接解析整个响应
                     assessment_result = json.loads(content)
+                    
+                    # 同样确保VPR评分和优先级一致
+                    if 'vpr_score' in assessment_result:
+                        vpr_score = assessment_result['vpr_score']
+                        
+                        # 使用配置文件中的VPR优先级映射关系
+                        correct_priority = None
+                        for priority, score_range in settings.VPR_PRIORITY_MAPPING.items():
+                            min_score, max_score = score_range
+                            if min_score <= vpr_score <= max_score:
+                                correct_priority = priority
+                                break
+                        
+                        # 如果找到正确的优先级，且与AI返回的不同，则进行调整
+                        if correct_priority:
+                            if 'priority' not in assessment_result or assessment_result['priority'] != correct_priority:
+                                original_priority = assessment_result.get('priority', '未知')
+                                logger.warning(f"调整优先级: 原始={original_priority}, VPR={vpr_score}, 正确优先级={correct_priority}")
+                                assessment_result['priority'] = correct_priority
+                        else:
+                            logger.error(f"无法为VPR评分 {vpr_score} 找到匹配的优先级")
                     
                     logger.info(f"风险评估结果(直接解析): {assessment_result}")
                     
