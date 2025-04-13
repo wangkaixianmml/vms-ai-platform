@@ -155,12 +155,18 @@ async def assess_vulnerability_risk(
         asset_info = "无关联资产"
         if vulnerability_data.get("affected_assets"):
             assets = vulnerability_data.get("affected_assets", [])
+            logger.info(f"漏洞关联的资产数量: {len(assets)}")
+            
+            # 记录第一个资产的详细信息用于调试
+            if assets and len(assets) > 0:
+                logger.info(f"第一个资产的原始信息: {assets[0]}")
+            
             asset_details = []
             for index, asset in enumerate(assets):
                 # 严格按照5个关键属性构建资产信息
                 asset_detail = f"资产 {index+1}：\n"
-                asset_detail += f"- 资产名称: {asset.get('name', '未知')}\n"
-                asset_detail += f"- 资产类型: {asset.get('type', '未知')}\n"
+                asset_detail += f"资产名称: {asset.get('name', '未知')}\n"
+                asset_detail += f"资产类型: {asset.get('type', '未知')}\n"
                 
                 # 确保资产等级使用中文表示
                 importance_level = asset.get('importance_level', '未知')
@@ -169,20 +175,36 @@ async def assess_vulnerability_risk(
                     logger.warning(f"资产等级 '{importance_level}' 格式不正确，应该是'高'、'中'或'低'")
                     importance_level = '未知'
                 
-                asset_detail += f"- 资产等级: {importance_level}\n"
-                asset_detail += f"- 资产网络属性: {asset.get('network_type', '未知')}\n"
-                asset_detail += f"- 资产暴露面: {asset.get('exposure', '未知')}\n"
-                asset_detail += f"- 业务系统: {asset.get('business_system', '未知')}\n"
-                asset_detail += f"- 业务影响: {asset.get('business_impact', '未知')}"
+                asset_detail += f"资产等级: {importance_level}\n"
+                
+                # 获取网络属性，确保有值
+                network_type = asset.get('network_type', '未知')
+                asset_detail += f"资产网络属性: {network_type}\n"
+                
+                # 获取暴露面，确保有值
+                exposure = asset.get('exposure', '未知')
+                asset_detail += f"资产暴露面: {exposure}\n"
+                
+                # 获取业务系统，确保有值
+                business_system = asset.get('business_system', '未知')
+                asset_detail += f"业务系统: {business_system}\n"
+                
+                # 获取业务影响，确保有值
+                business_impact = asset.get('business_impact', '未知')
+                asset_detail += f"业务影响: {business_impact}"
+                
                 asset_details.append(asset_detail)
             
-            # 记录日志，便于调试
-            logger.debug(f"构建的资产信息示例 (第一个资产): {asset_details[0] if asset_details else '无'}")
+            # 记录完整构建的资产信息用于调试
+            if asset_details:
+                logger.info(f"构建的资产信息示例 (第一个资产): {asset_details[0]}")
             
             asset_info = "\n\n".join(asset_details)
             # 添加提示，确保评估过程考虑所有资产
             if len(assets) > 1:
                 asset_info += "\n\n请注意：以上多个资产都与此漏洞关联，评估时需考虑所有资产的综合风险。"
+        else:
+            logger.warning("漏洞没有关联任何资产，将使用'无关联资产'进行评估")
         
         # 构建提示词
         prompt = VULNERABILITY_RISK_ASSESSMENT_PROMPT.format(
@@ -197,7 +219,7 @@ async def assess_vulnerability_risk(
             asset_info=asset_info
         )
         
-        logger.debug(f"构造的风险评估提示词: {prompt[:200]}...")
+        logger.debug(f"构造的风险评估提示词: {prompt[:500]}...")
         
         # 发送到AI服务获取评估结果
         response = await dify_service.send_first_message(
@@ -213,9 +235,18 @@ async def assess_vulnerability_risk(
                 json_end = content.rfind('```')
                 if json_start > 6 and json_end > json_start:
                     json_str = content[json_start:json_end].strip()
+                    logger.debug(f"提取的JSON字符串: {json_str}")
                     assessment_result = json.loads(json_str)
                     
+                    # 记录完整的结果
+                    logger.info(f"风险评估结果: {assessment_result}")
                     logger.info(f"风险评估结果: VPR评分 = {assessment_result.get('vpr_score')}, 优先级 = {assessment_result.get('priority')}")
+                    
+                    # 检查是否包含资产评估信息
+                    if 'asset_assessment' in assessment_result:
+                        logger.info(f"资产评估信息: {assessment_result['asset_assessment']}")
+                    else:
+                        logger.warning("评估结果中缺少资产评估信息")
                     
                     return {
                         "success": True,
@@ -226,7 +257,7 @@ async def assess_vulnerability_risk(
                     # 尝试直接解析整个响应
                     assessment_result = json.loads(content)
                     
-                    # 不再应用VPR评分和优先级映射规则
+                    logger.info(f"风险评估结果(直接解析): {assessment_result}")
                     
                     return {
                         "success": True,
@@ -235,6 +266,7 @@ async def assess_vulnerability_risk(
                     }
             except Exception as e:
                 logger.error(f"解析AI评估结果失败: {str(e)}")
+                logger.error(f"响应内容: {content}")
                 return {
                     "success": False,
                     "error": "解析评估结果失败",

@@ -58,7 +58,22 @@ const RiskAssessmentModal: React.FC<RiskAssessmentModalProps> = ({
 
     try {
       // 准备完整的漏洞数据，包括关联资产
-      const assessmentResponse = await aiService.assessVulnerabilityRisk(vulnerability);
+      // 确保资产数据包含所有必需字段
+      const vulnerabilityWithEnhancedAssets = {
+        ...vulnerability,
+        affected_assets: vulnerability.affected_assets?.map((asset: any) => ({
+          ...asset,
+          // 确保必要字段存在，如果不存在则设置默认值
+          importance_level: asset.importance_level || "中",
+          network_type: asset.network_type || "内网",
+          exposure: asset.exposure || "低",
+          business_system: asset.business_system || "一般业务系统",
+          business_impact: asset.business_impact || "一般影响"
+        }))
+      };
+      
+      console.log('发送风险评估数据:', vulnerabilityWithEnhancedAssets);
+      const assessmentResponse = await aiService.assessVulnerabilityRisk(vulnerabilityWithEnhancedAssets);
       
       clearInterval(progressInterval);
       
