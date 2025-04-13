@@ -102,6 +102,12 @@ async def autocomplete_vulnerability(
                 
                 try:
                     result = json.loads(json_str)
+                    
+                    # 处理remediation_steps列表转字符串问题
+                    if 'remediation_steps' in result and isinstance(result['remediation_steps'], list):
+                        logger.info(f"将remediation_steps从列表转换为字符串: {result['remediation_steps']}")
+                        result['remediation_steps'] = "\n".join(result['remediation_steps'])
+                    
                     # 转换为响应模型
                     return VulnerabilityAutoCompleteResponse(**result)
                 except json.JSONDecodeError as je:
@@ -110,6 +116,12 @@ async def autocomplete_vulnerability(
                     fixed_json_str = json_str.replace("\n", "").replace("  ", " ")
                     try:
                         result = json.loads(fixed_json_str)
+                        
+                        # 处理remediation_steps列表转字符串问题
+                        if 'remediation_steps' in result and isinstance(result['remediation_steps'], list):
+                            logger.info(f"将remediation_steps从列表转换为字符串: {result['remediation_steps']}")
+                            result['remediation_steps'] = "\n".join(result['remediation_steps'])
+                        
                         return VulnerabilityAutoCompleteResponse(**result)
                     except Exception as fix_e:
                         logger.error(f"修复JSON后仍然解析失败: {str(fix_e)}")
